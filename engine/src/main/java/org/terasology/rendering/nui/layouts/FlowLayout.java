@@ -63,41 +63,64 @@ public class FlowLayout extends CoreLayout<LayoutHint> {
 
     @Override
     public void onDraw(Canvas canvas) {
-        int filledWidth = 0;
-        int filledHeight = 0;
-        int heightOffset = 0;
-        for (UIWidget widget : contents) {
-            Vector2i size = canvas.calculatePreferredSize(widget);
-            if (filledWidth != 0 && filledWidth + size.x > canvas.size().x) {
-                heightOffset += filledHeight + verticalSpacing;
-                filledWidth = 0;
-                filledHeight = 0;
-            }
-            canvas.drawWidget(widget, Rect2i.createFromMinAndSize(filledWidth, heightOffset, size.x, size.y));
-            filledWidth += size.x + horizontalSpacing;
-            filledHeight = Math.max(filledHeight, size.y);
-        }
+        layout(canvas, canvas.size(), true);
     }
 
     @Override
     public Vector2i getPreferredContentSize(Canvas canvas, Vector2i sizeHint) {
+        return layout(canvas, sizeHint, false);
+    }
+
+    /**
+     * Applies the flow layout to its children, arranging them in a directional flow.
+     * <p>
+     * The layout algorithm will wrap elements to a new line if adding them in the same line would exceed the bounding
+     * size. The first element of a row is placed regardless of its size, and thus may exceed the bounding size. The
+     * Flow layout attempts to stay within the preferred width, but will add new lines until all widgets have been laid
+     * out.
+     * <p>
+     * If the preferred bounding size is wider than the preferred size of the widest child the Flow layout guarantees to
+     * fit into the preferred width. There is no guarantee for the actual height.
+     *
+     * @param canvas the canvas to draw to and/or calculate sizes for
+     * @param boundingSize the boundary for this layout, may be a canvas size or a size hint
+     * @param draw whether to actually draw the widgets to the canvas
+     * @return the computed bounding box size for when arranging the widget
+     */
+    private Vector2i layout(Canvas canvas, Vector2i boundingSize, boolean draw) {
+        // current bounding box for the widgets already laid out
         Vector2i result = new Vector2i();
-        int filledWidth = 0;
-        int filledHeight = 0;
+        // current "cursor" position, always where the next widget is to be placed?
+        int widthOffset = 0;
+        // current "cursor" position, always where the next widget is to be placed
+        int heightOffset = 0;
+        // local maximum for row height
+        int rowHeight = 0;
+
         for (UIWidget widget : contents) {
             Vector2i size = canvas.calculatePreferredSize(widget);
-            if (filledWidth != 0 && filledWidth + size.x > sizeHint.x) {
-                result.x = Math.max(result.x, filledWidth);
-                result.y += filledHeight + verticalSpacing;
-                filledWidth = size.x + horizontalSpacing;
-                filledHeight = size.y;
+
+            if (widthOffset != 0 && widthOffset + horizontalSpacing + size.x <= boundingSize.x) {
+                // place widget in the current row
+                widthOffset += horizontalSpacing;
             } else {
-                filledWidth += size.x + horizontalSpacing;
-                filledHeight = Math.max(filledHeight, size.y);
+                // we need to wrap the row
+                result.x = Math.max(result.x, widthOffset);
+                result.y += rowHeight + verticalSpacing;
+                heightOffset = result.y;
+                widthOffset = 0;
+                rowHeight = 0;
             }
+
+            if (draw) {
+                canvas.drawWidget(widget, Rect2i.createFromMinAndSize(widthOffset, heightOffset, size.x, size.y));
+            }
+            widthOffset += size.x;
+            rowHeight = Math.max(rowHeight, size.y);
         }
-        result.x = Math.max(result.x, filledWidth);
-        result.y += filledHeight;
+
+        result.x = Math.max(result.x, widthOffset);
+        result.y += rowHeight;
 
         return result;
     }
@@ -121,7 +144,7 @@ public class FlowLayout extends CoreLayout<LayoutHint> {
         return horizontalSpacing;
     }
 
-     /**
+    /**
      * Retrieves the vertical spacing between adjacent widgets in this {@code FlowLayout}.
      *
      * @return The spacing, in pixels
